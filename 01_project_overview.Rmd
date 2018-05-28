@@ -1,0 +1,111 @@
+---
+title: "Project Overview"
+author: "tobiasst"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r init, message=F, warning=F}
+library(SummarizedExperiment)
+
+rerun <- T
+```
+
+## build sample table from runinfo table
+
+```{r init}
+samples <- read.delim("data/cluster/SraRunTable.txt")
+```
+
+We have utilized induced pluripotent stem cells (iPSCs) derived from Huntington’s disease patients (HD iPSCs) as a human model of HD and determined that the disease phenotypes only manifest in the differentiated neural stem cell (NSC) stage, not in iPSCs. To understand the molecular basis for the CAG repeat expansion dependent disease phenotypes in NSCs, we performed transcriptomic analysis of HD iPSCs and HD NSCs compared to isogenic controls using RNA-Seq. Differential gene expression and pathway analysis pointed to TGF-b and netrin-1 as the top dysregulated pathways. Using data driven gene coexpression network analysis, we identified seven distinct coexpression modules, and focused on two that were correlated with changes in gene expression in NSC due to the CAG expansion. Strikingly, our HD NSC model revealed the dysregulation of genes involved in neuronal development and the formation of the dorsal striatum in HD. Further, the striatal specific and neuronal networks disrupted could be modulated to correct HD phenotypes and provide novel therapeutic targets for HD
+
+Data is paired-end. Total RNA was purified from iPSCs or NSCs using RNeasy Mini kit (Qiagen). For RNA-Seq samples, an additional 350 ul RLT/-mercaptoethanol solution were added to each tube, followed by vortexed and centrifuged to lyse the cells. A Qiacube instrument was then used to extract the RNA using the RNase Micro protocol. The samples were eluted in 25 ul PCR grade H20. Sample OD was obtained by nanodrop for QC and then diluted to 4ng/40 ul.
+RNA libraries were prepared for sequencing using standard Illumina protocols
+RNA-Seq by IIlumina library preparation on a Hiseq 2000 was performed by the core genomics facility at the University of Minnesota. The samples were sequenced on a 50bp PE run. 32 libraries prepared and barcoded using TruSeq RNA Library preparation kits.
+
+## Collect data from cluster 
+
+```{r collect_data}
+
+if (rerun) {
+  cluster.dir <- "/Users/tobiasst/Desktop/mount/work/project/tobias/coppola_2015/"
+  
+  cmat <- c()
+  tmat <- c()
+  
+  for (sample in samples$Run) {
+    sample.name <- 
+      starcounts <- read.delim(paste(cluster.dir,sample,"_out/",sample,".ReadsPerGene.out.tab",sep=""), header=F)  
+    cmat <- cbind(cmat, starcounts[,2])
+    if (!sum(starcounts[,2])==0) {
+      rsemtpm <- read.delim(paste(cluster.dir,sample,"_out/",sample,"_rsem.genes.results",sep=""), header=T)
+      tmat <- cbind(tmat, rsemtpm$TPM)
+    } else {
+      tmat <- cbind(tmat, rep(NA, nrow(tmat)))
+    }
+    
+  }
+  rownames(cmat) <- starcounts[,1]
+  rownames(tmat) <- rsemtpm$gene_id
+  
+  flt <- !(grepl("^N_", rownames(cmat)))
+  cmat <- cmat[flt,]
+  
+  colnames(cmat) <- samples$Run
+  colnames(tmat) <- samples$Run
+  tmat <- tmat[match(rownames(cmat), rownames(tmat)),]
+  
+  samplesM <- data.frame(group=samples$group, cell_type=samples$cell_type, region=samples$region)
+  rownames(samplesM) <- samples$Run
+  se <- SummarizedExperiment(assays=list(counts=cmat, tpms=tmat), colData=samplesM)
+  dim(se)
+  saveRDS(se, file="se.rds")
+} else {
+  se <- readRDS("se.rds")
+}
+
+```
+
+## Read distribution
+
+```{r fig_counts, fig.width=5, fig.height=5}
+par(mar=c(6,4,2,2)+0.1)
+total.counts <- apply(assays(se)$counts,2,sum)
+o <- order(total.counts)
+total.counts <- total.counts[o]
+barplot(total.counts, las=2, col=se$group[o])
+```
+ 
+## Genes detected
+
+```{r fig_genes, fig.width=5, fig.height=5}
+par(mar=c(6,4,2,2)+0.1)
+total.genes <- apply(assays(se)$counts,2,function(x){sum(x>0)})
+o <- order(total.genes)
+total.counts <- total.genes[o]
+barplot(total.counts, las=2, col=se$group[o])
+
+```
+
+## PCA
+
+```{r pca, fig.width=6, fig.height=6}
+mat <- log2(assays(se)$tpms+0.01)
+mat <- mat[apply(mat,1,var)>0,]
+pca <- prcomp(t(mat))
+df <- data.frame(pca$x[,1:4])
+plot(df, col=se$group)
+legend("bottomright", levels(se$group), pch=1, col=1:4)
+
+```
+
+```{r}
+```
+
+```{r}
+sessionInfo()
+```
+
