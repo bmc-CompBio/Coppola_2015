@@ -26,15 +26,17 @@ library(pheatmap)
 ranking on the statistic (alternative log2FC)
 
 ```{r getRanks, message=F, warning=F, error=F}
+se <- readRDS("se.rds")
 results <- readRDS("res_HD_NSC_v_C116_NSC.rds")
-results.ord <- na.omit(results[ order(-results[,"stat"]), ])
-ranks <- results.ord$log2FoldChange
-names(ranks) <- mapIds(org.Hs.eg.db, keys = rownames(results.ord), keytype = "ENSEMBL",
-       column = "ENTREZID", multiVals = "first")
+
+ranks <- results$stat
+names(ranks) <- rowData(se)$entrez
+ranks <- na.omit(ranks)
+ranks <- ranks[!duplicated(names(ranks))]
 
 ```
 
-## Hallmark gene sets
+## Hallmark gene sets 
 
 ```{r, message=F, fig.width=10, fig.height=10}
 load("share/human_H_v5p2.rdata")
@@ -52,7 +54,6 @@ plotGseaTable(pathways[topPathways], ranks, fgseaRes,
 ### unfolded protein response
 
 ```{r, fig.height=15, fig.width=7}
-se <- readRDS("se.rds")
 eids <- pathways[["HALLMARK_UNFOLDED_PROTEIN_RESPONSE"]]
 
 mat <- t(scale(t(log2(assays(se)$tpms[rowData(se)$entrez %in% eids,]+0.01))))
@@ -63,7 +64,20 @@ p <- pheatmap(mat, annotation_col = ann, scale = "row", cluster_rows=T)
 
 ```
 
+## GO gene sets
 
+```{r, message=F, fig.width=10, fig.height=10}
+
+load("share/human_c5_v5p2.rdata")
+pathways <- Hs.c5
+fgseaRes <- fgsea(pathways, ranks, minSize=15, maxSize = 500, nperm=1000)
+topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
+topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+plotGseaTable(pathways[topPathways], ranks, fgseaRes, 
+              gseaParam = 0.5)
+
+```
 
 ## curated gene sets
 
