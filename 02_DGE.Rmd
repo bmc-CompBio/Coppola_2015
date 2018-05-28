@@ -11,9 +11,10 @@ output:
 ```{r init, message=F, warning=F}
 library(DESeq2)
 library(parallel)
-library(org.Hs.eg.db)
 library(pheatmap)
 ```
+
+### HD vesus control in NSC 
 
 ```{r}
 se <- readRDS("se.rds")
@@ -26,12 +27,7 @@ saveRDS(res, "res_HD_NSC_v_C116_NSC.rds")
 
 ## fits suppl. table 
 rf <- data.frame(res[order(res$padj),])
-rf$symbol <- mapIds(org.Hs.eg.db,
-       keys = rownames(rf),
-       keytype = "ENSEMBL",
-       column = "SYMBOL",
-       multiVals = "first")
-head(rf)
+rf$symbol <- rowData(dds)$symbol
 
 ## differentially expressed genes
 degf <- rf[!is.na(rf$padj) & rf$padj<0.1,]
@@ -44,17 +40,14 @@ res <- res[order(res$stat, decreasing = T),]
 
 ```{r heatmap, fig.height=8, fig.width=6}
 
-upregulated <- rownames(res)[!is.na(res$padj) & res$padj < 0.1 & res$stat > 0][1:50]
+flt <- !is.na(res$padj) & res$padj < 0.1 & res$stat > 0
+upregulated <- rownames(res)[flt][1:50]
 
 mat <- t(scale(t(log2(assays(se)$tpms[upregulated,]+0.01))))
-rownames(mat) <- mapIds(org.Hs.eg.db,
-       keys = rownames(mat),
-       keytype = "ENSEMBL",
-       column = "SYMBOL",
-       multiVals = "first")
+rownames(mat) <- rowData(se[upregulated,])$symbol
 
-ann <- data.frame(cell_type=samplesM$cell_type, region=samplesM$region,row.names = colnames(mat))
-p <- pheatmap(mat, annotation_col = ann, scale = "row", cluster_rows=F)
+ann <- data.frame(cell_type=se$cell_type, region=se$region,row.names = colnames(mat))
+p <- pheatmap(mat, annotation_col = ann, scale = "row", cluster_rows=T)
 ```
 
 

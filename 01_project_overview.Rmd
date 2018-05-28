@@ -10,13 +10,14 @@ output:
 
 ```{r init, message=F, warning=F}
 library(SummarizedExperiment)
-
+library(biomaRt)
+library(RColorBrewer)
 rerun <- T
 ```
 
 ## build sample table from runinfo table
 
-```{r init}
+```{r}
 samples <- read.delim("data/cluster/SraRunTable.txt")
 ```
 
@@ -60,7 +61,24 @@ if (rerun) {
   
   samplesM <- data.frame(group=samples$group, cell_type=samples$cell_type, region=samples$region)
   rownames(samplesM) <- samples$Run
-  se <- SummarizedExperiment(assays=list(counts=cmat, tpms=tmat), colData=samplesM)
+  
+  ## get Annotation data
+  ml <- listDatasets(useMart("ensembl"))
+  print(ml[ml$dataset=="hsapiens_gene_ensembl",])
+  ensembl <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+  bm <- getBM(filters = "ensembl_gene_id",
+              attributes = c("ensembl_gene_id","entrezgene","external_gene_name","gene_biotype","description"),
+              values = rownames(cmat),
+              mart = ensembl)
+  
+  annot <- data.frame(id=rownames(cmat))
+  annot$symbol <- bm$external_gene_name[match(rownames(cmat), bm$ensembl_gene_id)]
+  annot$entrez <- bm$entrezgene[match(rownames(cmat), bm$ensembl_gene_id)]
+  annot$biotype <- bm$gene_biotype[match(rownames(cmat), bm$ensembl_gene_id)]
+  annot$description <- bm$description[match(rownames(cmat), bm$ensembl_gene_id)]
+  
+
+  se <- SummarizedExperiment(assays=list(counts=cmat, tpms=tmat), colData=samplesM, rowData=annot)
   dim(se)
   saveRDS(se, file="se.rds")
 } else {
@@ -71,38 +89,41 @@ if (rerun) {
 
 ## Read distribution
 
-```{r fig_counts, fig.width=5, fig.height=5}
-par(mar=c(6,4,2,2)+0.1)
+```{r fig_counts, fig.width=7, fig.height=4}
+class.cols <- brewer.pal(6, "Paired")[c(1,5,2,6)]
+
+par(mar=c(7,4,2,8)+0.1, xpd=TRUE)
 total.counts <- apply(assays(se)$counts,2,sum)
 o <- order(total.counts)
 total.counts <- total.counts[o]
-barplot(total.counts, las=2, col=se$group[o])
+barplot(total.counts/1e6, las=2, col=class.cols[se$group][o], ylab=" million reads")
+legend("topright", inset=c(-0.3,0), levels(se$group), fill=class.cols)
+
 ```
  
 ## Genes detected
 
-```{r fig_genes, fig.width=5, fig.height=5}
-par(mar=c(6,4,2,2)+0.1)
+```{r fig_genes, fig.width=7, fig.height=4}
+par(mar=c(7,4,2,8)+0.1, xpd=TRUE)
 total.genes <- apply(assays(se)$counts,2,function(x){sum(x>0)})
 o <- order(total.genes)
 total.counts <- total.genes[o]
-barplot(total.counts, las=2, col=se$group[o])
+barplot(total.counts, las=2, col=class.cols[se$group][o], ylab="genes detected")
+legend("topright", inset=c(-0.3,0), levels(se$group), fill=class.cols)
+
 
 ```
 
 ## PCA
 
 ```{r pca, fig.width=6, fig.height=6}
+par(mar=c(4,4,2,8)+0.1, xpd=TRUE)
 mat <- log2(assays(se)$tpms+0.01)
 mat <- mat[apply(mat,1,var)>0,]
 pca <- prcomp(t(mat))
 df <- data.frame(pca$x[,1:4])
-plot(df, col=se$group)
-legend("bottomright", levels(se$group), pch=1, col=1:4)
+plot(df, col=class.cols[se$group])
 
-```
-
-```{r}
 ```
 
 ```{r}
